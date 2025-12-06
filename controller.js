@@ -77,7 +77,7 @@ redisSub.on('pmessage', (pattern, channel, message) => {
     }
 });
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // Auth Middleware
 const authenticate = (req, res, next) => {
