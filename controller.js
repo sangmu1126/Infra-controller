@@ -3,9 +3,10 @@ const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
 const multerS3 = require('multer-s3');
-const { S3Client } = require("@aws-sdk/client-s3");
+
+const { S3Client, DeleteObjectCommand } = require("@aws-sdk/client-s3");
+const { DynamoDBClient, PutItemCommand, GetItemCommand, ScanCommand, DeleteItemCommand, UpdateItemCommand } = require("@aws-sdk/client-dynamodb");
 const { SQSClient, SendMessageCommand } = require("@aws-sdk/client-sqs");
-const { DynamoDBClient, PutItemCommand, GetItemCommand, ScanCommand } = require("@aws-sdk/client-dynamodb");
 const Redis = require("ioredis");
 const { v4: uuidv4 } = require('uuid');
 
@@ -234,6 +235,111 @@ app.get(['/logs', '/api/logs'], cors(), (req, res) => {
         { id: "1", timestamp: new Date().toISOString(), message: "NanoGrid Controller is running." },
         { id: "2", timestamp: new Date().toISOString(), message: "Waiting for jobs..." }
     ]);
+});
+
+// 1. 함수 상세 조회 (GET /functions/:id) - 설정 페이지용
+app.get(['/functions/:id', '/api/functions/:id'], cors(), async (req, res) => {
+    const functionId = req.params.id;
+    try {
+        const command = new GetItemCommand({
+            TableName: process.env.TABLE_NAME,
+            Key: { functionId: { S: functionId } }
+        });
+        const response = await db.send(command);
+
+        if (!response.Item) {
+            return res.status(404).json({ error: "Function not found" });
+        }
+
+        const item = response.Item;
+        res.json({
+            id: item.functionId.S,
+            functionId: item.functionId.S,
+            name: item.originalName?.S || "Unknown",
+            runtime: item.runtime?.S || "python",
+            description: item.description?.S || "",
+            // S3 키 정보를 줘야 "코드 수정" 때 원본을 알 수 있음
+            s3Key: item.s3Key?.S || "",
+            uploadedAt: item.uploadedAt?.S || ""
+        });
+    } catch (error) {
+        logger.error("Get Detail Error", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// 2. 함수 코드/정보 수정 (PUT /functions/:id)
+// 파일이 있으면 S3 덮어쓰기 + DB 업데이트, 파일 없으면 DB만 업데이트
+app.put(['/functions/:id', '/api/functions/:id'], authenticate, upload.single('file'), async (req, res) => {
+    const functionId = req.params.id;
+    try {
+        // 1. 파일이 새로 올라왔으면 S3 Key 업데이트 필요
+        let updateExpression = "set updated_at = :t";
+        let expressionAttributeValues = {
+            ":t": { S: new Date().toISOString() }
+        };
+
+        if (req.file) {
+            // 새 파일이 있으면 S3 Key도 업데이트
+            updateExpression += ", s3Key = :k, originalName = :n";
+            expressionAttributeValues[":k"] = { S: req.file.key };
+            expressionAttributeValues[":n"] = { S: req.file.originalname };
+        }
+
+        if (req.body.description) {
+            updateExpression += ", description = :d";
+            expressionAttributeValues[":d"] = { S: req.body.description };
+        }
+
+        const command = new UpdateItemCommand({
+            TableName: process.env.TABLE_NAME,
+            Key: { functionId: { S: functionId } },
+            UpdateExpression: updateExpression,
+            ExpressionAttributeValues: expressionAttributeValues
+        });
+
+        await db.send(command);
+        logger.info(`Function Updated`, { functionId });
+        res.json({ success: true, functionId });
+
+    } catch (error) {
+        logger.error("Update Error", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// 3. 함수 삭제 (DELETE /functions/:id) - S3 파일까지 진짜 삭제
+app.delete(['/functions/:id', '/api/functions/:id'], cors(), async (req, res) => {
+    const functionId = req.params.id;
+    try {
+        // 1. 먼저 DB에서 S3 Key를 알아내야 함
+        const getCmd = new GetItemCommand({
+            TableName: process.env.TABLE_NAME,
+            Key: { functionId: { S: functionId } }
+        });
+        const item = await db.send(getCmd);
+
+        // 2. S3에서 파일 삭제 (비용 절감)
+        if (item.Item && item.Item.s3Key) {
+            await s3.send(new DeleteObjectCommand({
+                Bucket: process.env.BUCKET_NAME,
+                Key: item.Item.s3Key.S
+            }));
+        }
+
+        // 3. DynamoDB에서 메타데이터 삭제
+        await db.send(new DeleteItemCommand({
+            TableName: process.env.TABLE_NAME,
+            Key: { functionId: { S: functionId } }
+        }));
+
+        logger.info(`Function Deleted`, { functionId });
+        res.json({ success: true, deletedId: functionId });
+
+    } catch (error) {
+        logger.error("Delete Error", error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
 const server = app.listen(PORT, () => {
