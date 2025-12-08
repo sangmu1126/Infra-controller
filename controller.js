@@ -24,7 +24,7 @@ const logger = {
 };
 
 // Fail-Fast
-const REQUIRED_ENV = ['AWS_REGION', 'BUCKET_NAME', 'TABLE_NAME', 'SQS_URL', 'REDIS_HOST', 'NANOGRID_API_KEY'];
+const REQUIRED_ENV = ['AWS_REGION', 'BUCKET_NAME', 'TABLE_NAME', 'SQS_URL', 'REDIS_HOST', 'INFRA_API_KEY'];
 const missingEnv = REQUIRED_ENV.filter(key => !process.env[key]);
 if (missingEnv.length > 0) {
     logger.error(`FATAL: Missing environment variables`, { missing: missingEnv });
@@ -83,7 +83,7 @@ app.use(express.json({ limit: '10mb' }));
 // Auth Middleware
 const authenticate = (req, res, next) => {
     const clientKey = req.headers['x-api-key'];
-    if (!clientKey || clientKey !== process.env.NANOGRID_API_KEY) {
+    if (!clientKey || clientKey !== process.env.INFRA_API_KEY) {
         logger.warn("Unauthorized access", { ip: req.ip });
         return res.status(401).json({ error: "Unauthorized" });
     }
@@ -497,7 +497,7 @@ app.use((err, req, res, next) => {
 });
 
 const server = app.listen(PORT, () => {
-    logger.info(`NanoGrid Controller ${VERSION} Started`, { port: PORT });
+    logger.info(`Infra Controller ${VERSION} Started`, { port: PORT });
 });
 server.setTimeout(300000); // Socket Timeout: 5 min
 
