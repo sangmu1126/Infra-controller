@@ -55,7 +55,7 @@ const redisSub = new Redis({
     retryStrategy: times => Math.min(times * 50, 2000)
 });
 const responseEmitter = new EventEmitter();
-responseEmitter.setMaxListeners(0); // [Fix] 0 means unlimited listeners (prevent memory leak warning)
+responseEmitter.setMaxListeners(0); // 0 means unlimited listeners (prevent memory leak warning)
 
 redisSub.on('connect', () => {
     logger.info("Global Redis Subscriber Connected");
@@ -141,7 +141,8 @@ const upload = multer({
             req.functionId = functionId;
             cb(null, `functions/${functionId}/v1.zip`);
         }
-    })
+    }),
+    limits: { fileSize: 50 * 1024 * 1024 } // [Security] Limit 50MB
 });
 
 // 0. Health Check
@@ -205,6 +206,13 @@ app.post('/upload', authenticate, rateLimiter, upload.single('file'), async (req
             return res.status(400).json({ error: "Invalid memoryMb. Must be between 128 and 10240." });
         }
 
+        // [Security] Validate Runtime
+        const ALLOWED_RUNTIMES = ["python", "cpp", "nodejs", "go"];
+        const runtime = req.body.runtime || "python";
+        if (!ALLOWED_RUNTIMES.includes(runtime)) {
+            return res.status(400).json({ error: `Invalid runtime. Allowed: ${ALLOWED_RUNTIMES.join(", ")}` });
+        }
+
         const functionId = req.functionId || uuidv4();
 
         await db.send(new PutItemCommand({
@@ -213,7 +221,7 @@ app.post('/upload', authenticate, rateLimiter, upload.single('file'), async (req
                 functionId: { S: functionId },
                 s3Key: { S: req.file.key },
                 originalName: { S: req.file.originalname },
-                runtime: { S: req.body.runtime || "python" },
+                runtime: { S: runtime },
                 memoryMb: { N: memoryMb.toString() }, // Auto-Tuner
                 uploadedAt: { S: new Date().toISOString() }
             }
@@ -258,7 +266,7 @@ app.post('/run', authenticate, rateLimiter, async (req, res) => {
             MessageBody: JSON.stringify(taskPayload)
         };
 
-        // [Fix] Add GroupId for FIFO queues (Ignored for Standard queues)
+        // Add GroupId for FIFO queues (Ignored for Standard queues)
         if (process.env.SQS_URL.endsWith('.fifo')) {
             sendMessageParams.MessageGroupId = "default";
             // Use requestId for deduplication
@@ -400,7 +408,7 @@ app.put(['/functions/:id', '/api/functions/:id'], authenticate, upload.single('f
         };
 
         if (req.file) {
-            // [Fix] Clean up old S3 file before update to save cost
+            // Clean up old S3 file before update to save cost
             try {
                 const { Item: oldItem } = await db.send(new GetItemCommand({
                     TableName: process.env.TABLE_NAME, Key: { functionId: { S: functionId } }
