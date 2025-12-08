@@ -17,10 +17,33 @@ app.use(cors());
 const PORT = 8080;
 const VERSION = "v2.4";
 
+// In-Memory Log Buffer (Ring Buffer)
+const logBuffer = [];
+const MAX_LOGS = 100;
+
+function addLog(level, msg, context = {}) {
+    const logEntry = {
+        id: uuidv4(),
+        level,
+        timestamp: new Date(),
+        msg,
+        ...context
+    };
+
+    // 1. Stdout for external collectors (Datadog, CloudWatch)
+    if (level === 'ERROR') console.error(JSON.stringify(logEntry));
+    else if (level === 'WARN') console.warn(JSON.stringify(logEntry));
+    else console.log(JSON.stringify(logEntry));
+
+    // 2. Buffer for API
+    logBuffer.unshift(logEntry);
+    if (logBuffer.length > MAX_LOGS) logBuffer.pop();
+}
+
 const logger = {
-    info: (msg, context = {}) => console.log(JSON.stringify({ level: 'INFO', timestamp: new Date(), msg, ...context })),
-    warn: (msg, context = {}) => console.warn(JSON.stringify({ level: 'WARN', timestamp: new Date(), msg, ...context })),
-    error: (msg, error = {}) => console.error(JSON.stringify({ level: 'ERROR', timestamp: new Date(), msg, error: error.message || error, stack: error.stack }))
+    info: (msg, context) => addLog('INFO', msg, context),
+    warn: (msg, context) => addLog('WARN', msg, context),
+    error: (msg, error = {}) => addLog('ERROR', msg, { error: error.message || error, stack: error.stack })
 };
 
 // Fail-Fast
@@ -365,11 +388,9 @@ app.get(['/functions', '/api/functions'], cors(), authenticate, async (req, res)
 
 // 2. 로그 조회 (GET /logs)
 // (일단 에러 안 나게 빈 데이터라도 줌)
+// 2. 로그 조회 (GET /logs) - Real In-Memory Logs
 app.get(['/logs', '/api/logs'], cors(), authenticate, (req, res) => {
-    res.json([
-        { id: "1", timestamp: new Date().toISOString(), message: "NanoGrid Controller is running." },
-        { id: "2", timestamp: new Date().toISOString(), message: "Waiting for jobs..." }
-    ]);
+    res.json(logBuffer);
 });
 
 // 1. 함수 상세 조회 (GET /functions/:id) - 설정 페이지용
