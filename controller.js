@@ -55,16 +55,26 @@ if (missingEnv.length > 0) {
 }
 
 // AWS Clients
-const s3 = new S3Client({ region: process.env.AWS_REGION });
-const sqs = new SQSClient({ region: process.env.AWS_REGION });
-const db = new DynamoDBClient({ region: process.env.AWS_REGION });
+const s3 = new S3Client({
+    region: process.env.AWS_REGION,
+    endpoint: process.env.S3_ENDPOINT
+});
+const sqs = new SQSClient({
+    region: process.env.AWS_REGION,
+    endpoint: process.env.SQS_ENDPOINT
+});
+const db = new DynamoDBClient({
+    region: process.env.AWS_REGION,
+    endpoint: process.env.DYNAMODB_ENDPOINT
+});
 
 // Redis Client
 const redis = new Redis({
     host: process.env.REDIS_HOST,
     port: 6379,
     retryStrategy: times => Math.min(times * 50, 2000),
-    maxRetriesPerRequest: null
+    maxRetriesPerRequest: null,
+    enableOfflineQueue: false
 });
 
 let isRedisConnected = false;
@@ -75,7 +85,8 @@ redis.on('connect', () => { isRedisConnected = true; logger.info("Global Redis C
 const redisSub = new Redis({
     host: process.env.REDIS_HOST,
     port: 6379,
-    retryStrategy: times => Math.min(times * 50, 2000)
+    retryStrategy: times => Math.min(times * 50, 2000),
+    enableOfflineQueue: false
 });
 const responseEmitter = new EventEmitter();
 responseEmitter.setMaxListeners(0); // 0 means unlimited listeners (prevent memory leak warning)
@@ -218,23 +229,35 @@ app.get('/models', async (req, res) => {
     }
 });
 
+// [Security] Validation Middleware (Headers)
+const validateUploadRequest = (req, res, next) => {
+    const ALLOWED_RUNTIMES = ["python", "cpp", "nodejs", "go"];
+    const runtime = req.headers['x-runtime'] || "python";
+    if (!ALLOWED_RUNTIMES.includes(runtime)) {
+        return res.status(400).json({ error: `Invalid runtime. Allowed: ${ALLOWED_RUNTIMES.join(", ")}` });
+    }
+
+    const memoryMb = parseInt(req.headers['x-memory-mb'] || "128");
+    const MAX_MEMORY = (runtime === 'python') ? 10240 : 1024;
+
+    if (isNaN(memoryMb) || memoryMb < 128 || memoryMb > MAX_MEMORY) {
+        return res.status(400).json({
+            error: `Invalid memoryMb for ${runtime}. Must be between 128 and ${MAX_MEMORY} MB.`
+        });
+    }
+
+    req.validatedRuntime = runtime;
+    req.validatedMemoryMb = memoryMb;
+    next();
+};
+
 // 1. Upload
-app.post('/upload', authenticate, rateLimiter, upload.single('file'), async (req, res) => {
+app.post('/upload', authenticate, rateLimiter, validateUploadRequest, upload.single('file'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ error: "No file provided" });
 
-        // Input Validation
-        const memoryMb = parseInt(req.body.memoryMb || "128");
-        if (isNaN(memoryMb) || memoryMb < 128 || memoryMb > 10240) {
-            return res.status(400).json({ error: "Invalid memoryMb. Must be between 128 and 10240." });
-        }
-
-        // [Security] Validate Runtime
-        const ALLOWED_RUNTIMES = ["python", "cpp", "nodejs", "go"];
-        const runtime = req.body.runtime || "python";
-        if (!ALLOWED_RUNTIMES.includes(runtime)) {
-            return res.status(400).json({ error: `Invalid runtime. Allowed: ${ALLOWED_RUNTIMES.join(", ")}` });
-        }
+        const runtime = req.validatedRuntime;
+        const memoryMb = req.validatedMemoryMb;
 
         const functionId = req.functionId || uuidv4();
 
