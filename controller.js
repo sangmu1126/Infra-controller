@@ -86,7 +86,8 @@ const redisSub = new Redis({
     host: process.env.REDIS_HOST,
     port: 6379,
     retryStrategy: times => Math.min(times * 50, 2000),
-    enableOfflineQueue: false
+    enableOfflineQueue: false,
+    enableReadyCheck: false // Fix for "Connection in subscriber mode" error
 });
 const responseEmitter = new EventEmitter();
 responseEmitter.setMaxListeners(0); // 0 means unlimited listeners (prevent memory leak warning)
