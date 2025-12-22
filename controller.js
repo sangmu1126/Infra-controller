@@ -300,6 +300,8 @@ app.post('/upload', authenticate, rateLimiter, validateUploadRequest, upload.sin
                 runtime: { S: req.validatedRuntime },
                 memoryMb: { N: req.validatedMemoryMb.toString() },
                 uploadedAt: { S: new Date().toISOString() }
+                // TODO: Store Environment Variables in DynamoDB
+                // envVars: { S: req.body.envVars || "[]" }
             }
         }));
         logger.info(`Upload Success`, { functionId });
