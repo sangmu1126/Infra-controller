@@ -452,6 +452,8 @@ app.get(['/functions/:id', '/api/functions/:id'], cors(), authenticate, async (r
             id: item.functionId.S,
             name: item.name?.S,
             description: item.description?.S || "",
+            runtime: item.runtime?.S || "python",
+            memoryMb: item.memoryMb ? parseInt(item.memoryMb.N) : 128,
             s3Key: item.s3Key?.S,
             uploadedAt: item.uploadedAt?.S
         });
