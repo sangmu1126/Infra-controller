@@ -138,6 +138,10 @@ redisSub.on('pmessage', (pattern, channel, message) => {
                         safeMessage = safeMessage.substring(0, 350000) + "\n...[TRUNCATED: Log too large for metadata store. Check S3 for full output]...";
                     }
 
+                    // TTL: 30 days from now (Epoch time in seconds)
+                    const TTH_SECONDS = 30 * 24 * 60 * 60;
+                    const expiresAt = Math.floor(Date.now() / 1000) + TTH_SECONDS;
+
                     const logItem = {
                         functionId: { S: result.functionId },
                         timestamp: { S: new Date().toISOString() },
@@ -145,7 +149,8 @@ redisSub.on('pmessage', (pattern, channel, message) => {
                         status: { S: result.status || (result.exitCode === 0 ? "SUCCESS" : "ERROR") },
                         duration: { N: duration.toString() },
                         memoryMb: { N: memoryMb.toString() },
-                        message: { S: safeMessage }
+                        message: { S: safeMessage },
+                        expiresAt: { N: expiresAt.toString() }
                     };
 
                     db.send(new PutItemCommand({
