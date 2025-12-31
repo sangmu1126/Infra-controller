@@ -127,8 +127,17 @@ redisSub.on('pmessage', (pattern, channel, message) => {
                 const memoryBytes = result.peakMemoryBytes !== undefined ? result.peakMemoryBytes : (result.peak_memory_bytes || 0);
                 const memoryMb = memoryBytes ? Math.round(memoryBytes / 1024 / 1024) : 0;
 
-                // [NEW] Persist to DynamoDB Logs Table
+                // Persist to DynamoDB Logs Table
                 if (process.env.LOGS_TABLE_NAME) {
+
+                    // Truncate message to avoid DynamoDB 400KB limit
+                    // UTF-8 can take up to 4 bytes per char, but usually 1-3. 
+                    // Safe limit: ~350k chars.
+                    let safeMessage = result.stderr || result.stdout || "";
+                    if (safeMessage.length > 350000) {
+                        safeMessage = safeMessage.substring(0, 350000) + "\n...[TRUNCATED: Log too large for metadata store. Check S3 for full output]...";
+                    }
+
                     const logItem = {
                         functionId: { S: result.functionId },
                         timestamp: { S: new Date().toISOString() },
@@ -136,7 +145,7 @@ redisSub.on('pmessage', (pattern, channel, message) => {
                         status: { S: result.status || (result.exitCode === 0 ? "SUCCESS" : "ERROR") },
                         duration: { N: duration.toString() },
                         memoryMb: { N: memoryMb.toString() },
-                        message: { S: result.stderr || result.stdout || "" }
+                        message: { S: safeMessage }
                     };
 
                     db.send(new PutItemCommand({
