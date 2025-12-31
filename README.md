@@ -23,25 +23,23 @@ Leveraging Node.js's asynchronous I/O model, it ensures high throughput on a sin
 
 ```mermaid
 graph LR
-    User[Client] -- "x-api-key" --> Controller
+    User[Client] -- "x-api-key" --> ALB[Load Balancer]
+    ALB -- Port 8080 --> Controller[Node.js Controller]
     
-    subgraph "Infra Controller"
-        Auth[Auth Middleware]
-        Rate[Redis Rate Limiter]
-        API[API Handler]
+    subgraph "Control Plane (Infra)"
+    Controller -- "1. Upload (Zip)" --> S3[AWS S3]
+    Controller -- "2. Metadata" --> DDB[DynamoDB]
+    Controller -- "3. Rate Limit" --> Redis[(Redis Cluster)]
+    Controller -- "4. Enqueue Job" --> SQS[AWS SQS]
+    
+    Controller -.-> Prom[Prometheus]
+    Controller -.-> AINode[AI Node / Ollama]
     end
-    
-    Controller -- "1. Validate" --> Auth
-    Auth -- "2. Check Quota" --> Rate
-    Rate -- "3. Process" --> API
-    
-    API -- "Meta" --> DDB[(DynamoDB)]
-    API -- "Code" --> S3[S3 Bucket]
-    API -- "Job" --> SQS[AWS SQS]
-    
-    SQS -.-> Worker[Worker Nodes]
-    Worker -- "Result" --> Redis[(Redis Pub/Sub)]
-    Redis -- "Response" --> API
+
+    SQS --> Worker[Worker Nodes]
+    Worker -- "5. Result Pub" --> Redis
+    Redis -- "6. Sub/Result" --> Controller
+    Controller --> User
 ```
 
 ---
