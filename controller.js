@@ -23,6 +23,7 @@ const VERSION = "v2.8";
 // In-Memory Log Buffer (Ring Buffer)
 const logBuffer = [];
 const MAX_LOGS = 100;
+const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT || "100");
 
 function addLog(level, msg, context = {}) {
     const logEntry = {
@@ -248,9 +249,9 @@ const rateLimiter = async (req, res, next) => {
         const ip = req.ip || req.connection.remoteAddress;
         const key = `ratelimit:${ip}`;
         const current = await redis.eval(RATE_LIMIT_SCRIPT, 1, key, 60);
-        res.set('X-RateLimit-Limit', 100);
-        res.set('X-RateLimit-Remaining', Math.max(0, 100 - current));
-        if (current > 100) return res.status(429).json({ error: "Too Many Requests" });
+        res.set('X-RateLimit-Limit', RATE_LIMIT_MAX);
+        res.set('X-RateLimit-Remaining', Math.max(0, RATE_LIMIT_MAX - current));
+        if (current > RATE_LIMIT_MAX) return res.status(429).json({ error: "Too Many Requests" });
         next();
     } catch (error) { next(); }
 };
