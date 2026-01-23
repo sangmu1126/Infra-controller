@@ -244,6 +244,8 @@ const RATE_LIMIT_SCRIPT = `
     if current == 1 then redis.call("EXPIRE", KEYS[1], ARGV[1]) end
     return current
 `;
+
+
 const rateLimiter = async (req, res, next) => {
     try {
         const ip = req.ip || req.connection.remoteAddress;
@@ -710,8 +712,10 @@ app.get('/api/functions/:id/logs', cors(), authenticate, async (req, res) => {
             })));
         }
 
-        const limit = parseInt(req.query.limit) || 20;
-        const command = new QueryCommand({
+        const limit = parseInt(req.query.limit) || 1000;
+        const startTime = req.query.startTime;
+
+        const params = {
             TableName: process.env.LOGS_TABLE_NAME,
             KeyConditionExpression: "functionId = :fid",
             ExpressionAttributeValues: {
@@ -719,7 +723,16 @@ app.get('/api/functions/:id/logs', cors(), authenticate, async (req, res) => {
             },
             ScanIndexForward: false, // Descending order (newest first)
             Limit: limit
-        });
+        };
+
+        // Efficient Filtering using Sort Key (timestamp)
+        if (startTime) {
+            params.KeyConditionExpression += " AND #ts >= :startTime";
+            params.ExpressionAttributeNames = { "#ts": "timestamp" };
+            params.ExpressionAttributeValues[":startTime"] = { S: startTime };
+        }
+
+        const command = new QueryCommand(params);
 
         const response = await db.send(command);
         const logs = response.Items.map(item => {
