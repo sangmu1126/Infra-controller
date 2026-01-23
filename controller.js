@@ -372,14 +372,7 @@ app.get(['/api/workers', '/api/worker/status'], (req, res) => {
     });
 });
 
-app.get(['/metrics', '/api/metrics'], async (req, res) => {
-    try {
-        res.set('Content-Type', register.contentType);
-        res.end(await register.metrics());
-    } catch (err) {
-        res.status(500).end(err);
-    }
-});
+
 
 // Model Catalog
 app.get(['/models', '/api/models'], async (req, res) => {
@@ -663,37 +656,7 @@ app.get(['/functions/:id', '/api/functions/:id'], cors(), authenticate, async (r
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET /system/status - Worker Registry Status
-app.get(['/system/status', '/api/system/status'], cors(), authenticate, (req, res) => {
-    try {
-        const pools = { python: 0, nodejs: 0, cpp: 0, go: 0 };
-        let totalActive = 0;
 
-        // Aggregate stats from all registered workers
-        for (const data of workerRegistry.values()) {
-            totalActive += data.activeJobs || 0;
-            if (data.pools) {
-                pools.python += (data.pools.python || 0);
-                pools.nodejs += (data.pools.nodejs || 0);
-                pools.cpp += (data.pools.cpp || 0);
-                pools.go += (data.pools.go || 0);
-            }
-        }
-
-        res.json({
-            status: 'online',
-            uptime: process.uptime(),
-            worker: {
-                count: workerRegistry.size,
-                pools,
-                activeJobs: totalActive,
-                details: Array.from(workerRegistry.values())
-            }
-        });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
 
 // GET /api/functions/:id/logs
 app.get('/api/functions/:id/logs', cors(), authenticate, async (req, res) => {
