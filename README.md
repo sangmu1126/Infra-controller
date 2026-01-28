@@ -52,7 +52,7 @@ graph LR
 
 ### 🛡️ Enterprise Security & Governance
 - **API Guard**: Strict authentication via `x-api-key` header verification.
-- **Traffic Control**: Atomic rate limiting using Redis Lua Scripts (e.g., 100 req/min depending on IP).
+- **Traffic Control**: Atomic rate limiting using Redis Lua Scripts (Configured to **10,000 req/min** for high-concurrency capability).
 - **Validation**: Strict schema checks for input payloads and configuration updates.
 
 ### 🏥 Operational Stability (Resilience)
