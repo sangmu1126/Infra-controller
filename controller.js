@@ -23,7 +23,7 @@ const VERSION = "v2.8";
 // In-Memory Log Buffer (Ring Buffer)
 const logBuffer = [];
 const MAX_LOGS = 100;
-const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT || "30000"); // Default 500 RPS
+const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT || "3000"); // 50 RPS for t3.micro stability
 
 function addLog(level, msg, context = {}) {
     const logEntry = {
