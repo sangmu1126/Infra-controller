@@ -23,7 +23,7 @@ const VERSION = "v2.8";
 // In-Memory Log Buffer (Ring Buffer)
 const logBuffer = [];
 const MAX_LOGS = 100;
-const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT || "100");
+const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT || "3000"); // 50 RPS for t3.micro stability
 
 function addLog(level, msg, context = {}) {
     const logEntry = {
@@ -613,6 +613,36 @@ function waitForResult(requestId) {
         responseEmitter.once(requestId, onResult);
     });
 }
+
+// Debug: Trigger Load Test
+app.post(['/debug/loadtest', '/api/debug/loadtest'], authenticate, (req, res) => {
+    logger.info("Starting Load Test Demo...");
+
+    // Stream output as text
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Transfer-Encoding', 'chunked');
+
+    const spawn = require('child_process').spawn;
+    const scriptPath = require('path').join(__dirname, 'scripts', 'stress_test.js');
+
+    // Pass current API Key to child process
+    const env = { ...process.env, INFRA_API_KEY: process.env.INFRA_API_KEY || 'test-api-key' };
+
+    const child = spawn('node', [scriptPath], { env });
+
+    child.stdout.on('data', (data) => {
+        res.write(data);
+    });
+
+    child.stderr.on('data', (data) => {
+        res.write(data);
+    });
+
+    child.on('close', (code) => {
+        res.write(`\nProcess exited with code ${code}`);
+        res.end();
+    });
+});
 
 // GET /functions, /logs, /functions/:id
 app.get(['/functions', '/api/functions'], cors(), authenticate, async (req, res) => {
