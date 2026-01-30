@@ -27,8 +27,8 @@ It now supports **Dynamic Resource Resizing**, allowing users and Auto-Tuners to
 
 ```mermaid
 graph LR
-    User[Client] -- "x-api-key" --> ALB[Load Balancer]
-    ALB -- Port 8080 --> Controller[Node.js Controller]
+    User[Client] -- "x-api-key" --> EIP[Elastic IP]
+    EIP -- Port 8080 --> Controller[Node.js Controller]
     
     subgraph "Control Plane (Infra)"
     Controller -- "1. Upload (Zip)" --> S3[AWS S3]
